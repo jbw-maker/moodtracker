@@ -1,0 +1,17 @@
+# Personal data — must never be committed (see CLAUDE.md, rule 1)
+mood-log-*.csv
+mood-backup-*.json
+*.csv
+data/
+backups/
+exports/
+
+# Editor / OS clutter
+.DS_Store
+*.swp
+
+# Secrets and machine-local settings (see CLAUDE.md, rule 2)
+.env
+.env.*
+*.local
+.claude/settings.local.json

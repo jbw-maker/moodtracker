@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mood Tracker</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6677;
+    --border: #dde1e8; --accent: #3b6fd8; --warn-bg: #fff4e0; --warn-border: #e8a33b;
+    --danger: #c43d3d; --zone-high: rgba(232,120,40,.10); --zone-low: rgba(60,110,210,.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171d; --card: #1d2129; --text: #e6e9ef; --muted: #9aa3b2;
+      --border: #313744; --accent: #7aa2ff; --warn-bg: #3a2c14; --warn-border: #b5832e;
+      --danger: #ff7b7b; --zone-high: rgba(232,120,40,.14); --zone-low: rgba(90,140,240,.14);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.6rem; margin: 8px 0 16px; }
+  h2 { font-size: 1.15rem; margin: 0 0 12px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+          padding: 16px; margin-bottom: 16px; }
+  label.field { display: block; font-weight: 600; margin: 14px 0 6px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  input[type=date], input[type=number], select, textarea {
+    font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; }
+  textarea { width: 100%; min-height: 70px; resize: vertical; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .mood-readout { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+  .mood-badge { min-width: 44px; text-align: center; font-weight: 700; color: #fff;
+                border-radius: 8px; padding: 2px 8px; }
+  .scale-ends { display: flex; justify-content: space-between; font-size: .8rem; color: var(--muted); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { font: inherit; border: 0; background: transparent; color: var(--text);
+                padding: 6px 12px; cursor: pointer; border-right: 1px solid var(--border); }
+  .seg button:last-child { border-right: 0; }
+  .seg button.on { background: var(--accent); color: #fff; }
+  .seg-label { width: 110px; }
+  .btn { font: inherit; border: 1px solid var(--accent); background: var(--accent); color: #fff;
+         border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+  .btn.secondary { background: transparent; color: var(--accent); }
+  .btn.small { padding: 2px 10px; font-size: .85rem; }
+  .btn.danger { border-color: var(--danger); color: var(--danger); background: transparent; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  .warn { background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 10px;
+          padding: 10px 14px; margin-bottom: 10px; }
+  #chart svg { width: 100%; height: auto; display: block; }
+  #chart text { fill: var(--muted); font-size: 11px; }
+  .history { list-style: none; padding: 0; margin: 0; }
+  .history li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0;
+                border-top: 1px solid var(--border); }
+  .history li:first-child { border-top: 0; }
+  .history .info { flex: 1; min-width: 0; }
+  .history .notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+  footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 8px 0 24px; }
+  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+           background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px;
+           opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mood Tracker</h1>
+
+  <div id="warnings"></div>
+
+  <section class="card">
+    <h2>Daily check-in</h2>
+    <div class="row">
+      <input type="date" id="date">
+      <span class="muted" id="editing-note"></span>
+    </div>
+
+    <label class="field" for="mood">Mood</label>
+    <input type="range" id="mood" min="-5" max="5" step="1" value="0">
+    <div class="scale-ends"><span>−5 Depressed</span><span>0 Balanced</span><span>+5 Manic</span></div>
+    <div class="mood-readout">
+      <span class="mood-badge" id="mood-badge">0</span>
+      <span id="mood-label">Balanced</span>
+    </div>
+
+    <label class="field" for="sleep">Hours of sleep last night</label>
+    <input type="number" id="sleep" min="0" max="24" step="0.5" placeholder="e.g. 7.5">
+
+    <label class="field">How strong were these today?</label>
+    <div class="row"><span class="seg-label">Energy</span><span class="seg" data-key="energy"></span></div>
+    <div class="row" style="margin-top:8px"><span class="seg-label">Anxiety</span><span class="seg" data-key="anxiety"></span></div>
+    <div class="row" style="margin-top:8px"><span class="seg-label">Irritability</span><span class="seg" data-key="irritability"></span></div>
+    <div class="muted" style="margin-top:4px">0 = none · 1 = mild · 2 = moderate · 3 = severe</div>
+
+    <label class="field">Medication taken as prescribed?</label>
+    <span class="seg" data-key="meds"></span>
+
+    <label class="field" for="notes">Notes, events or triggers</label>
+    <textarea id="notes" placeholder="Stress, alcohol, racing thoughts, life events…"></textarea>
+
+    <div class="row" style="margin-top:14px">
+      <button class="btn" id="save">Save entry</button>
+      <button class="btn secondary" id="today">Go to today</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Mood chart</h2>
+      <select id="range">
+        <option value="14">Last 14 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="365">Last year</option>
+      </select>
+    </div>
+    <div id="chart"></div>
+    <div class="muted">Line = mood (shaded bands mark ±3 and beyond). Bars = hours of sleep.</div>
+  </section>
+
+  <section class="card">
+    <h2>History</h2>
+    <ul class="history" id="history"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Your data</h2>
+    <p class="muted" style="margin-top:0">Entries are stored only in this browser on this device. Export a backup regularly, or a CSV to share with your doctor.</p>
+    <div class="row">
+      <button class="btn secondary" id="export-csv">Export CSV</button>
+      <button class="btn secondary" id="export-json">Backup (JSON)</button>
+      <button class="btn secondary" id="import-btn">Restore backup</button>
+      <input type="file" id="import-file" accept="application/json,.json" hidden>
+    </div>
+  </section>
+
+  <footer>
+    This is a personal log, not a medical device.<br>
+    If you are in crisis or thinking about harming yourself, call or text <strong>988</strong> (US) or your local emergency number.
+  </footer>
+</main>
+<div id="toast"></div>
+
+<script>
+const STORE_KEY = 'moodtracker.v1';
+const MOOD_LABELS = {
+  '-5': 'Severely depressed', '-4': 'Very low', '-3': 'Moderately low', '-2': 'Low',
+  '-1': 'Slightly low', '0': 'Balanced', '1': 'Slightly elevated', '2': 'Elevated',
+  '3': 'Moderately elevated (hypomanic)', '4': 'Very elevated', '5': 'Severely elevated (manic)'
+};
+const MOOD_COLORS = {
+  '-5': '#1f3f99', '-4': '#2d55b8', '-3': '#3f6fcf', '-2': '#5a8ad8', '-1': '#5fa3b8',
+  '0': '#3c9a5f', '1': '#9aa83a', '2': '#d1a12b', '3': '#e0802a', '4': '#d95a26', '5': '#c43a2a'
+};
+const SEG_OPTIONS = {
+  energy: [0, 1, 2, 3], anxiety: [0, 1, 2, 3], irritability: [0, 1, 2, 3],
+  meds: [['yes', 'Yes'], ['partial', 'Partly'], ['no', 'No'], ['na', 'N/A']]
+};
+
+const $ = id => document.getElementById(id);
+let entries = load();
+let seg = {};
+
+// ---------- storage ----------
+function load() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; }
+  catch { return {}; }
+}
+function persist() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(entries)); }
+  catch { toast('Could not save — browser storage is unavailable'); }
+}
+
+// ---------- dates (local time, YYYY-MM-DD) ----------
+function fmt(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function parse(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+function addDays(s, n) { const d = parse(s); d.setDate(d.getDate() + n); return fmt(d); }
+function today() { return fmt(new Date()); }
+function pretty(s) {
+  return parse(s).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ---------- form ----------
+function buildSegments() {
+  document.querySelectorAll('.seg').forEach(el => {
+    const key = el.dataset.key;
+    for (const opt of SEG_OPTIONS[key]) {
+      const [val, text] = Array.isArray(opt) ? opt : [opt, String(opt)];
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = text; b.dataset.val = val;
+      b.onclick = () => setSeg(key, seg[key] === val ? null : val);
+      el.appendChild(b);
+    }
+  });
+}
+function setSeg(key, val) {
+  seg[key] = val;
+  document.querySelectorAll(`.seg[data-key="${key}"] button`).forEach(b => {
+    b.classList.toggle('on', val !== null && String(val) === b.dataset.val);
+  });
+}
+function showMood(v) {
+  $('mood-badge').textContent = v > 0 ? '+' + v : v;
+  $('mood-badge').style.background = MOOD_COLORS[v];
+  $('mood-label').textContent = MOOD_LABELS[v];
+}
+function loadForm(date) {
+  $('date').value = date;
+  const e = entries[date];
+  $('mood').value = e ? e.mood : 0;
+  showMood(Number($('mood').value));
+  $('sleep').value = e && e.sleep != null ? e.sleep : '';
+  for (const k of Object.keys(SEG_OPTIONS)) setSeg(k, e && e[k] != null ? e[k] : null);
+  $('notes').value = e ? e.notes || '' : '';
+  $('editing-note').textContent = e ? 'Editing saved entry' : 'New entry';
+}
+function saveForm() {
+  const date = $('date').value;
+  if (!date) return toast('Pick a date first');
+  const sleepRaw = $('sleep').value.trim();
+  const sleep = sleepRaw === '' ? null : Number(sleepRaw);
+  if (sleep !== null && (isNaN(sleep) || sleep < 0 || sleep > 24)) return toast('Sleep must be 0–24 hours');
+  entries[date] = {
+    date, mood: Number($('mood').value), sleep,
+    energy: seg.energy, anxiety: seg.anxiety, irritability: seg.irritability, meds: seg.meds,
+    notes: $('notes').value.trim(), updated: new Date().toISOString()
+  };
+  persist();
+  render();
+  loadForm(date);
+  toast('Saved');
+}
+
+// ---------- warnings ----------
+function recent(days) {
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) { const e = entries[addDays(today(), -i)]; if (e) out.push(e); }
+  return out;
+}
+function renderWarnings() {
+  const msgs = [];
+  const week = recent(7);
+  const last3 = week.slice(-3);
+  if (last3.length === 3 && last3.every(e => e.mood >= 3))
+    msgs.push('Your mood has been elevated (+3 or higher) for your last 3 entries.');
+  const shortHigh = week.slice(-2);
+  if (shortHigh.length === 2 && shortHigh.every(e => e.sleep != null && e.sleep < 5 && e.mood >= 1))
+    msgs.push('Short sleep (under 5 hours) together with raised mood two days running — this can be an early sign of a high.');
+  const last5 = week.slice(-5);
+  if (last5.length === 5 && last5.every(e => e.mood <= -3))
+    msgs.push('Your mood has been low (−3 or lower) for your last 5 entries.');
+  if (week.filter(e => e.meds === 'no').length >= 2)
+    msgs.push('Medication was missed on 2 or more days this week.');
+  $('warnings').innerHTML = '';
+  if (!msgs.length) return;
+  const box = document.createElement('div');
+  box.className = 'warn';
+  box.innerHTML = '<strong>Pattern to watch</strong><ul style="margin:6px 0"></ul>' +
+    '<div class="muted">Consider checking your wellness plan or contacting your care team.</div>';
+  const ul = box.querySelector('ul');
+  for (const m of msgs) { const li = document.createElement('li'); li.textContent = m; ul.appendChild(li); }
+  $('warnings').appendChild(box);
+}
+
+// ---------- chart ----------
+function renderChart() {
+  const days = Number($('range').value);
+  const W = 720, H = 280, L = 34, R = 10, moodTop = 10, moodBot = 180, sleepTop = 200, sleepBot = 258;
+  const step = (W - L - R) / Math.max(days - 1, 1);
+  const x = i => L + i * step;
+  const yMood = m => moodTop + (5 - m) / 10 * (moodBot - moodTop);
+  const ySleep = h => sleepBot - Math.min(h, 12) / 12 * (sleepBot - sleepTop);
+  const start = addDays(today(), -(days - 1));
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', `Mood and sleep chart for the last ${days} days`);
+  const el = (tag, attrs, text) => {
+    const n = document.createElementNS(ns, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    svg.appendChild(n); return n;
+  };
+
+  el('rect', { x: L, y: yMood(5), width: W - L - R, height: yMood(3) - yMood(5), fill: 'var(--zone-high)' });
+  el('rect', { x: L, y: yMood(-3), width: W - L - R, height: yMood(-5) - yMood(-3), fill: 'var(--zone-low)' });
+  for (const m of [5, 3, 0, -3, -5]) {
+    el('line', { x1: L, x2: W - R, y1: yMood(m), y2: yMood(m), stroke: 'var(--border)',
+                 'stroke-dasharray': m === 0 ? '' : '3 3' });
+    el('text', { x: L - 6, y: yMood(m) + 4, 'text-anchor': 'end' }, m > 0 ? '+' + m : m);
+  }
+  el('text', { x: L - 6, y: sleepTop + 4, 'text-anchor': 'end' }, '12h');
+  el('text', { x: L - 6, y: sleepBot, 'text-anchor': 'end' }, '0h');
+  el('line', { x1: L, x2: W - R, y1: sleepBot, y2: sleepBot, stroke: 'var(--border)' });
+
+  const barW = Math.max(Math.min(step * 0.7, 14), 1.5);
+  const labelEvery = Math.ceil(days / 8);
+  let path = '', prev = false;
+  for (let i = 0; i < days; i++) {
+    const d = addDays(start, i);
+    const e = entries[d];
+    if (i % labelEvery === 0 || i === days - 1) {
+      const dt = parse(d);
+      el('text', { x: x(i), y: H - 4, 'text-anchor': 'middle' }, `${dt.getMonth() + 1}/${dt.getDate()}`);
+    }
+    if (e && e.sleep != null) {
+      const bar = el('rect', { x: x(i) - barW / 2, y: ySleep(e.sleep), width: barW,
+                               height: sleepBot - ySleep(e.sleep), fill: 'var(--accent)', opacity: .45, rx: 1 });
+      const t = document.createElementNS(ns, 'title');
+      t.textContent = `${pretty(d)}: ${e.sleep}h sleep`;
+      bar.appendChild(t);
+    }
+    if (e) { path += (prev ? 'L' : 'M') + x(i) + ' ' + yMood(e.mood); prev = true; }
+    else prev = false;
+  }
+  el('path', { d: path, fill: 'none', stroke: 'var(--muted)', 'stroke-width': 1.5 });
+  for (let i = 0; i < days; i++) {
+    const d = addDays(start, i), e = entries[d];
+    if (!e) continue;
+    const c = el('circle', { cx: x(i), cy: yMood(e.mood), r: days > 90 ? 2.5 : 4.5,
+                             fill: MOOD_COLORS[e.mood], style: 'cursor:pointer' });
+    const t = document.createElementNS(ns, 'title');
+    t.textContent = `${pretty(d)}: mood ${e.mood > 0 ? '+' : ''}${e.mood}`;
+    c.appendChild(t);
+    c.onclick = () => { loadForm(d); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  }
+  $('chart').replaceChildren(svg);
+}
+
+// ---------- history ----------
+function renderHistory() {
+  const list = $('history');
+  list.innerHTML = '';
+  const dates = Object.keys(entries).sort().reverse();
+  if (!dates.length) {
+    list.innerHTML = '<li class="muted">No entries yet — save your first check-in above.</li>';
+    return;
+  }
+  for (const d of dates) {
+    const e = entries[d];
+    const li = document.createElement('li');
+    const badge = document.createElement('span');
+    badge.className = 'mood-badge';
+    badge.style.background = MOOD_COLORS[e.mood];
+    badge.textContent = e.mood > 0 ? '+' + e.mood : e.mood;
+    const info = document.createElement('div');
+    info.className = 'info';
+    const bits = [];
+    if (e.sleep != null) bits.push(`Sleep ${e.sleep}h`);
+    if (e.energy != null) bits.push(`Energy ${e.energy}`);
+    if (e.anxiety != null) bits.push(`Anxiety ${e.anxiety}`);
+    if (e.irritability != null) bits.push(`Irritability ${e.irritability}`);
+    if (e.meds) bits.push(`Meds: ${Object.fromEntries(SEG_OPTIONS.meds)[e.meds] || e.meds}`);
+    info.innerHTML = '<strong></strong><div class="muted"></div><div class="notes"></div>';
+    info.children[0].textContent = pretty(d) + ' — ' + (MOOD_LABELS[e.mood] || '');
+    info.children[1].textContent = bits.join(' · ');
+    info.children[2].textContent = e.notes || '';
+    const edit = document.createElement('button');
+    edit.className = 'btn secondary small'; edit.textContent = 'Edit';
+    edit.onclick = () => { loadForm(d); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    const del = document.createElement('button');
+    del.className = 'btn danger small'; del.textContent = 'Delete';
+    del.onclick = () => {
+      if (!confirm(`Delete the entry for ${pretty(d)}?`)) return;
+      delete entries[d]; persist(); render();
+      if ($('date').value === d) loadForm(d);
+    };
+    li.append(badge, info, edit, del);
+    list.appendChild(li);
+  }
+}
+
+// ---------- import / export ----------
+function download(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function exportCsv() {
+  const cols = ['date', 'mood', 'sleep', 'energy', 'anxiety', 'irritability', 'meds', 'notes'];
+  const esc = v => v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+  const rows = Object.keys(entries).sort().map(d => cols.map(c => esc(entries[d][c])).join(','));
+  download(`mood-log-${today()}.csv`, [cols.join(','), ...rows].join('\n'), 'text/csv');
+}
+function exportJson() {
+  download(`mood-backup-${today()}.json`, JSON.stringify({ app: 'moodtracker', version: 1, entries }, null, 2), 'application/json');
+}
+function importJson(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      const incoming = data.entries || data;
+      let n = 0;
+      for (const [d, e] of Object.entries(incoming)) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || typeof e !== 'object' || !Number.isInteger(e.mood) ||
+            e.mood < -5 || e.mood > 5) continue;
+        entries[d] = { ...e, date: d }; n++;
+      }
+      persist(); render(); loadForm($('date').value);
+      toast(`Restored ${n} entr${n === 1 ? 'y' : 'ies'}`);
+    } catch { toast('That file is not a valid backup'); }
+  };
+  reader.readAsText(file);
+}
+
+// ---------- misc ----------
+let toastTimer;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+function render() { renderWarnings(); renderChart(); renderHistory(); }
+
+buildSegments();
+$('mood').oninput = e => showMood(Number(e.target.value));
+$('date').onchange = e => e.target.value && loadForm(e.target.value);
+$('date').max = today();
+$('save').onclick = saveForm;
+$('today').onclick = () => loadForm(today());
+$('range').onchange = renderChart;
+$('export-csv').onclick = exportCsv;
+$('export-json').onclick = exportJson;
+$('import-btn').onclick = () => $('import-file').click();
+$('import-file').onchange = e => { if (e.target.files[0]) importJson(e.target.files[0]); e.target.value = ''; };
+loadForm(today());
+render();
+</script>
+</body>
+</html>
