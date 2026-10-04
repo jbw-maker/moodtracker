@@ -20,6 +20,9 @@ A simple, dependency-free mood tracker for bipolar mood charting. Intended to ru
    - API keys, tokens, or passwords
    - Commit author identity: use the GitHub-provided `noreply` email for this repo, not a personal address.
    - Before committing, scan the staged diff for anything on this list; when in doubt, leave it out and ask.
+   - A local `pre-commit`/`commit-msg` hook in `.git/hooks/` enforces rules 1–2 (noreply author, data files, home paths, emails, secrets, and personal terms listed in `.git/pii-patterns`). These live only in `.git/` and aren't pushed — never add the patterns file to the repo, and don't bypass the hook with `--no-verify` without asking.
+
+3. **Commit, pull, and push after every completed task.** Once a task is done, commit it, then `git pull --rebase` and `git push` so `main` on GitHub stays current.
 
 ## Commands
 
